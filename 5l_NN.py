@@ -1,5 +1,3 @@
-"""Actually its FIVE layers hahahahaha
-"""
 import numpy as np
 
 #"sigmoid," takes a number and turns it into a decimal
@@ -36,7 +34,7 @@ np.random.seed(1)
 
 
 
-syn0 = 2*np.random.random((4, 5))-1 #makes a random "synapse," synapses move one layer to the next
+syn0 = 2*np.random.random((4, 5))-1
 syn1 = 2*np.random.random((5, 5))-1
 syn2 = 2*np.random.random((5, 5))-1
 syn3 = 2*np.random.random((5, 2))-1
@@ -52,7 +50,7 @@ for i in range(300000):
     l4_delta = l4_error*nonlin(l4, True)
 
     if i%10000 == 0:
-        print("rorer:\n", l4_error)
+        print("error:\n", l4_error)
 
     l3_error = l4_delta.dot(syn3.T)
     l3_delta = l3_error*nonlin(l3, True)
