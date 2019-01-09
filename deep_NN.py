@@ -2,6 +2,8 @@
 Depth and synapse size are parameterized.
 """
 import numpy as np
+from sklearn.datasets import load_digits
+import matplotlib.pyplot as plt
 
 #--------------FUNCTIONS--------------#
 def nonlin(x, deriv=False):
@@ -18,7 +20,8 @@ def cost(error_matrix):
     called explicitly to compare magnitude of errors.
     """
     error = np.array(error_matrix)
-    cost = 0.5*(error.norm()**2)
+    norm = np.linalg.norm(error)
+    cost = 0.5*(norm**2)
     return cost
 
 
@@ -39,17 +42,20 @@ def make_syns(x, y, num_layers, synapse_size):
             syns.append(2*np.random.random((synapse_size, synapse_size))-1)
     return syns
 
-def run_once(x, syns, num_layers):
+def run_once(x, syns):
     """Given an input and a list of synapses, calculates an output. Can be used
     for prediction or for training.
     """
     layers = []
     layers.append(x)
-    for j in range(1, num_layers):
-        layers.append(nonlin(np.dot(layers[j-1], syns[j-1])))
+    for j in range(len(syns)):
+        # print(j)
+        # print("Layers:", len(layers))
+        # print("syns:", len(syns))
+        layers.append(nonlin(np.dot(layers[j], syns[j])))
     return layers
 
-def update_syns(x, y, layers, alpha, syns, num_layers):
+def update_syns(y, layers, alpha, syns, num_layers):
     """Finds final error and delta, then does backpropagation to adjust previous
     layers. Uses calculated updates to change synapses.
     """
@@ -67,10 +73,12 @@ def update_syns(x, y, layers, alpha, syns, num_layers):
 
     if num_layers==2:
         syns[0] -= alpha*(layers[0].T.dot(deltas[0]))
+
     else:
         for j in range(num_layers-1):
+            update = alpha*(layers[j].T.dot(deltas[j]))
+            syns[j] -= update
 
-            syns[j] -= alpha*(layers[j].T.dot(deltas[j]))
     return syns, errors
 
 
@@ -79,47 +87,141 @@ def train_one_alpha(x, y, num_layers, synapse_size, alpha, num_iter):
     """
     syns = make_syns(x, y, num_layers, synapse_size)
     for i in range(num_iter):
-        layers = run_once(x, syns, num_layers)
-        syns, errors = update_syns(x, y, layers, alpha, syns, num_layers)
-    print("Output After Training:\n", layers[-1])
+        layers = run_once(x, syns)
+        syns, errors = update_syns(y, layers, alpha, syns, num_layers)
+    #print("Output After Training:\n", layers[-1].shape)
     output_error = errors[-1]
-    print("Final Error:\n", output_error)
-    return layers, syns, output_error
+    #print("Final Error:\n", output_error)
+    final_cost = cost(output_error)
+    #print("Final Cost:\n", final_cost)
+    return layers, syns, output_error, final_cost
 
-def run_network(x, y, num_layers, synapse_size, alpha,
-                num_iter=300000, test_input=None, test_output=None):
+def run_network(x, y, num_layers, synapse_size, alphas=[1],
+                num_iter=300000, test_info=(0,)):
+    """Trains weights for several different alpha values. Stores the cost score
+    for each alpha and reports the lowest cost when finished. Can optionally take
+    test_info. If provided, will also find test cost and report least cost.
+
+    Inputs:
+    x: two dimensional numpy array, the training input.
+
+    y: two dimensional numpy array, the training solution set or key.
+
+    num_layers: integer, sets the number of hidden layers. Includes output and input, so
+    setting num_layers=2 would create 0 hidden layers.
+
+    synapse_size: integer, sets the side length of the hidden layers, when possible. First
+    and last hidden layers will have one side constrained, interior hidden layers
+    will be square. For a 3 layer network (the most common), a good rule of thumb is to
+    set this equal to the mean of the length of a single input and the length of a single output.
+
+    alphas: list, a set of alpha values to tune step size for optimization. By
+    default, no alpha tuning occurs.
+
+    num_iter: integer, the number of times the network will backpropagate. Keep in mind,
+    this many iterations will happen for each alpha value. Default is 300000.
+
+    test_info: tuple, an optional setting which cause sthe network to use
+    generated weights on a test input and compare to an expected output. By default,
+    no info is provided, and this step will be skipped. To use, set test_info
+    equal to a tuple containing the test input array and the expected output
+    array, as in test_info=(input, output).
+
+
+    """
     least_training_cost=100000
     training_tuple = (least_training_cost, None)
-    least_test_cost=100000
-    test_tuple = (least_test_cost, None)
+    test_flag = False
+    syn_dict = {}
+    if len(test_info) != 1:
+        test_flag = True
+        least_test_cost=100000
+        test_tuple = (least_test_cost, None)
+
+
+
 
     for alpha in alphas:
         print("Testing alpha value of %s" % (alpha))
-        layers, syns, output_error = train_one_alpha(x, y, num_layers, synapse_size, alpha, num_iter)
-        if test_input.any():
-            test_layers = run_once(test_input, syns, num_layers)
+        layers, syns, output_error, training_cost = train_one_alpha(x, y, num_layers, synapse_size, alpha, num_iter)
+        syn_dict[alpha] = syns
+        print("Cost:", training_cost)
+        if test_flag == True:
+            test_layers = run_once(test_info[0], syns, num_layers)
             output = test_layers[-1]
-            print("Test:\n", output)
-            if test_output.any():
-                test_error = test_output-output
-                print("Test Error:\n", test_error)
+            test_error = test_info[1]-output
+            test_cost = cost(test_error)
 
-        training_cost = cost(output_error)
-        test_cost = cost(test_error)
+            if test_cost < least_test_cost:
+                least_test_cost = test_cost
+                test_tuple = (test_cost, alpha)
+
+
         if training_cost < least_training_cost:
+            least_training_cost = training_cost
             training_tuple = (training_cost, alpha)
-        if test_cost < least_test_cost:
-            test_tuple = (test_cost, alpha)
-        
+
+    if test_flag == True:
+        print("Least costs:")
+        print("For training:\n", training_tuple)
+        print("For test:\n", test_tuple)
+
+    else:
+        print("Least Training Cost:\n", training_tuple)
+        np.save("weights", syn_dict[training_tuple[1]])
+
+
+
+def predict(x, syns):
+    """Predicts the class of a given input.
+    """
+    layers = run_once(x, syns)
+    classes = layers[-1]
+    best = 0
+    for i in range(len(classes)):
+        if classes[i] > best:
+            best = classes[i]
+            prediction = i
+    return prediction
+
+
+
+def get_digits():
+    """Gets scikit learn's handwritten image database and loads them in a form the
+    network will take."""
+    data, target = load_digits(return_X_y=True)
+    #print(len(data), len(target))
+    training = []
+    train_key = np.zeros((len(data), 10))
+    for i in range(len(data)):
+        training.append(data[i])
+        train_key[i][target[i]] = 1
+    training = np.array(training)
+    print(training.shape)
+    return training, train_key
+
+
+    # print(digits.DESCR)
+    # fig = plt.figure()
+    # for i in range(10):
+    #     subplot = fig.add_subplot(5, 2, i + 1)
+    #     subplot.matshow(np.reshape(digits.data[i], (8, 8)), cmap='gray')
+    # plt.show()
+
+def add_bias(data):
+    """
+    Adds bias terms, but only to the first layer. Provide the training input dataset
+    """
+    new_data = list(data)
+    for i in range(len(new_data)):
+        new_data[i] = np.append(new_data[i], 1)
+    return np.array(new_data)
 
 
 
 
 
-
-
-
-#--------------TRAINING INPUT--------------#
+#--------------TRAINING INPUT TEMPLATE--------------#
 x = np.array([[1, 2, 3, 4, 5],
             [0, 3, 4, 5, 6],
             [2, 4, 6, 7, 8],
@@ -130,7 +232,7 @@ x = np.array([[1, 2, 3, 4, 5],
             [8, 4, 3, 1, 0],
             [5, 4, 3, 2, 1]])
 
-#--------------TRAINING OUTPUT--------------#
+#--------------TRAINING OUTPUT TEMPLATE--------------#
 y = np.array([[1, 0, 0],
             [1, 0, 0],
             [1, 0, 0],
@@ -144,10 +246,9 @@ y = np.array([[1, 0, 0],
 #--------------ALPHA TUNING--------------#
 #Put in a fair range, usually powers of ten I think are traditional.
 #If you know what alpha you want just put that one in.
-alphas = [0.01, 0.1, 1, 10]
+alphas = [0.001]
 
-
-#--------------TESTING--------------#
+#--------------TESTING TEMPLATES--------------#
 test_x = np.array([[2, 2, 2, 2, 2],
                     [1, 2, 5, 6, 9],
                     [7, 3, 2, 1, 0],
@@ -166,6 +267,8 @@ expected_out = np.array([[0, 1, 0],
                             [1, 0, 0], # Same as above
                             [0, 1, 0]])# Interesting
 
-
-run_network(x, y, num_layers=4, synapse_size=4, alpha=alphas,
-                num_iter=300000, test_input=test_x, test_output=expected_out)
+if __name__ == "__main__":
+    x, y = get_digits()
+    x = add_bias(x)
+    run_network(x, y, num_layers=4, synapse_size=37, alphas=alphas,
+                num_iter=500000)
